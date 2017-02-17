@@ -1,0 +1,14 @@
+# About this repo
+
+Development images for mysql.
+
+Available tags are:
+- 5.7, latest ([5.7/Dockerfile](https://github.com/TehesFR/docker-mysql/tree/master/5.7/Dockerfile))
+
+The image will create an utf8_general_ci database.
+
+# Docker-compose
+
+Please check a complete docker-compose.yml example at: https://github.com/TehesFR/docker-apache-php
+
+[Docker Hub page](https://hub.docker.com/r/tehes/docker-mysql/)
