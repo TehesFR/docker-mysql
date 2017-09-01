@@ -1,6 +1,6 @@
 # About this repo
 
-Development images for mysql.
+Development/Prod images for mysql.
 
 Available tags are:
 - 8.0, latest ([8.0/Dockerfile](https://github.com/TehesFR/docker-mysql/tree/master/8.0/Dockerfile))
