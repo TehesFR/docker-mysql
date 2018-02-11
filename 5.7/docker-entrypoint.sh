@@ -44,24 +44,26 @@ _check_config() {
 	toRun=( "$@" --verbose --help )
 	if ! errors="$("${toRun[@]}" 2>&1 >/dev/null)"; then
 		cat >&2 <<-EOM
-
 			ERROR: mysqld failed while attempting to check config
 			command was: "${toRun[*]}"
-
 			$errors
 		EOM
 		exit 1
 	fi
 }
 
-_datadir() {
-	"$@" --verbose --help 2>/dev/null | awk '$1 == "datadir" { print $2; exit }'
+# Fetch value from server config
+# We use mysqld --verbose --help instead of my_print_defaults because the
+# latter only show values present in config files, and not server defaults
+_get_config() {
+	local conf="$1"; shift
+	"$@" --verbose --help --log-bin-index="$(mktemp -u)" 2>/dev/null | awk '$1 == "'"$conf"'" { print $2; exit }'
 }
 
 # allow the container to be started with `--user`
 if [ "$1" = 'mysqld' -a -z "$wantHelp" -a "$(id -u)" = '0' ]; then
 	_check_config "$@"
-	DATADIR="$(_datadir "$@")"
+	DATADIR="$(_get_config 'datadir' "$@")"
 	mkdir -p "$DATADIR"
 	chown -R mysql:mysql "$DATADIR"
 	exec gosu mysql "$BASH_SOURCE" "$@"
@@ -71,7 +73,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 	# still need to check config, container may have started with --user
 	_check_config "$@"
 	# Get config
-	DATADIR="$(_datadir "$@")"
+	DATADIR="$(_get_config 'datadir' "$@")"
 
 	if [ ! -d "$DATADIR/mysql" ]; then
 		file_env 'MYSQL_ROOT_PASSWORD'
@@ -94,10 +96,11 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 			echo 'Certificates initialized'
 		fi
 
-		"$@" --skip-networking --socket=/var/run/mysqld/mysqld.sock &
+		SOCKET="$(_get_config 'socket' "$@")"
+		"$@" --skip-networking --socket="${SOCKET}" &
 		pid="$!"
 
-		mysql=( mysql --protocol=socket -uroot -hlocalhost --socket=/var/run/mysqld/mysqld.sock)
+		mysql=( mysql --protocol=socket -uroot -hlocalhost --socket="${SOCKET}" )
 
 		for i in {30..0}; do
 			if echo 'SELECT 1' | "${mysql[@]}" &> /dev/null; then
@@ -137,8 +140,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 			-- What's done in this file shouldn't be replicated
 			--  or products like mysql-fabric won't work
 			SET @@SESSION.SQL_LOG_BIN=0;
-
-			DELETE FROM mysql.user WHERE user NOT IN ('mysql.sys', 'mysqlxsys', 'root') OR host NOT IN ('localhost') ;
+			DELETE FROM mysql.user WHERE user NOT IN ('mysql.session', 'mysql.sys', 'root') OR host NOT IN ('localhost') ;
 			SET PASSWORD FOR 'root'@'localhost'=PASSWORD('${MYSQL_ROOT_PASSWORD}') ;
 			GRANT ALL ON *.* TO 'root'@'localhost' WITH GRANT OPTION ;
 			${rootCreate}
