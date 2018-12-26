@@ -40,6 +40,24 @@ file_env() {
 	unset "$fileVar"
 }
 
+# usage: process_init_file FILENAME MYSQLCOMMAND...
+#    ie: process_init_file foo.sh mysql -uroot
+# (process a single initializer file, based on its extension. we define this
+# function here, so that initializer scripts (*.sh) can use the same logic,
+# potentially recursively, or override the logic used in subsequent calls)
+process_init_file() {
+	local f="$1"; shift
+	local mysql=( "$@" )
+
+	case "$f" in
+		*.sh)     echo "$0: running $f"; . "$f" ;;
+		*.sql)    echo "$0: running $f"; "${mysql[@]}" < "$f"; echo ;;
+		*.sql.gz) echo "$0: running $f"; gunzip -c "$f" | "${mysql[@]}"; echo ;;
+		*)        echo "$0: ignoring $f" ;;
+	esac
+	echo
+}
+
 _check_config() {
 	toRun=( "$@" --verbose --help )
 	if ! errors="$("${toRun[@]}" 2>&1 >/dev/null)"; then
@@ -140,7 +158,6 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 			-- What's done in this file shouldn't be replicated
 			--  or products like mysql-fabric won't work
 			SET @@SESSION.SQL_LOG_BIN=0;
-			DELETE FROM mysql.user WHERE user NOT IN ('mysql.session', 'mysql.sys', 'root') OR host NOT IN ('localhost') ;
 			SET PASSWORD FOR 'root'@'localhost'=PASSWORD('${MYSQL_ROOT_PASSWORD}') ;
 			GRANT ALL ON *.* TO 'root'@'localhost' WITH GRANT OPTION ;
 			${rootCreate}
@@ -171,14 +188,9 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 		fi
 
 		echo
+		ls /docker-entrypoint-initdb.d/ > /dev/null
 		for f in /docker-entrypoint-initdb.d/*; do
-			case "$f" in
-				*.sh)     echo "$0: running $f"; . "$f" ;;
-				*.sql)    echo "$0: running $f"; "${mysql[@]}" < "$f"; echo ;;
-				*.sql.gz) echo "$0: running $f"; gunzip -c "$f" | "${mysql[@]}"; echo ;;
-				*)        echo "$0: ignoring $f" ;;
-			esac
-			echo
+			process_init_file "$f" "${mysql[@]}"
 		done
 
 		if [ ! -z "$MYSQL_ONETIME_PASSWORD" ]; then
